@@ -35,7 +35,12 @@ std::string GetProcessName(DWORD pid)
             if (pe.th32ProcessID == pid)
             {
                 CloseHandle(snap);
-                return pe.szExeFile;
+
+                // convert WCHAR -> string
+                char name[260];
+                WideCharToMultiByte(CP_UTF8, 0, pe.szExeFile, -1, name, 260, NULL, NULL);
+
+                return std::string(name);
             }
         } while (Process32Next(snap, &pe));
     }
