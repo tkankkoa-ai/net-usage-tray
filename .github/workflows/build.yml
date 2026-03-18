@@ -16,7 +16,7 @@ jobs:
 
     - name: Build EXE
       run: |
-        cl /std:c++17 /EHsc /O2 main.cpp /link advapi32.lib tdh.lib shell32.lib
+        cl /std:c++17 /EHsc /O2 main.cpp /link advapi32.lib tdh.lib shell32.lib user32.lib
 
     - name: Upload EXE
       uses: actions/upload-artifact@v4
