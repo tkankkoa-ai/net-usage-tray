@@ -7,7 +7,7 @@
 #include <vector>
 #include <algorithm>
 #include <tlhelp32.h>
-
+#include <string>
 #pragma comment(lib, "tdh.lib")
 #pragma comment(lib, "advapi32.lib")
 
