@@ -11,14 +11,15 @@ jobs:
     steps:
     - uses: actions/checkout@v4
 
-    - name: Setup MSBuild
-      uses: microsoft/setup-msbuild@v2
+    - name: Setup MSVC
+      uses: ilammy/msvc-dev-cmd@v1
 
-    - name: Build
-      run: msbuild *.vcxproj /p:Configuration=Release /p:Platform=x64
+    - name: Build EXE
+      run: |
+        cl /EHsc /O2 main.cpp /link advapi32.lib tdh.lib shell32.lib
 
     - name: Upload EXE
       uses: actions/upload-artifact@v4
       with:
         name: NetTray-EXE
-        path: x64/Release/
+        path: main.exe
