@@ -3,6 +3,7 @@
 #define INITGUID
 
 #include <windows.h>
+#include <shellapi.h>
 #include <evntcons.h>
 #include <evntrace.h>
 #include <tdh.h>
@@ -14,6 +15,7 @@
 
 #pragma comment(lib, "tdh.lib")
 #pragma comment(lib, "advapi32.lib")
+#pragma comment(lib, "user32.lib")
 
 #define WM_TRAYICON (WM_USER + 1)
 
@@ -23,7 +25,7 @@ std::map<DWORD, ULONG64> usage;
 TRACEHANDLE sessionHandle = 0;
 TRACEHANDLE traceHandle = 0;
 
-// Lấy tên exe từ PID
+// ===== Lấy tên process =====
 std::string GetProcessName(DWORD pid)
 {
     HANDLE snap = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
@@ -37,10 +39,8 @@ std::string GetProcessName(DWORD pid)
             {
                 CloseHandle(snap);
 
-                // convert WCHAR -> string
                 char name[260];
                 WideCharToMultiByte(CP_UTF8, 0, pe.szExeFile, -1, name, 260, NULL, NULL);
-
                 return std::string(name);
             }
         } while (Process32Next(snap, &pe));
@@ -50,22 +50,19 @@ std::string GetProcessName(DWORD pid)
     return "Unknown";
 }
 
-// Callback ETW
+// ===== ETW callback =====
 VOID WINAPI EventCallback(PEVENT_RECORD record)
 {
     DWORD pid = record->EventHeader.ProcessId;
 
-    ULONG size = 0;
-
     if (record->UserDataLength >= 4)
     {
-        size = *(ULONG*)(record->UserData);
+        ULONG size = *(ULONG*)(record->UserData);
+        usage[pid] += size;
     }
-
-    usage[pid] += size;
 }
 
-// Cập nhật tray
+// ===== Update tray =====
 void UpdateTray()
 {
     std::vector<std::pair<DWORD, ULONG64>> list(usage.begin(), usage.end());
@@ -88,18 +85,19 @@ void UpdateTray()
         text += name + ": " + buffer + " KB\n";
     }
 
-    // Convert sang wchar để gán vào tray
+    if (list.empty())
+        text = "No data (Run as Admin)";
+
     wchar_t wtext[128];
     MultiByteToWideChar(CP_UTF8, 0, text.c_str(), -1, wtext, 128);
 
     wcsncpy_s(nid.szTip, wtext, _TRUNCATE);
-
     Shell_NotifyIcon(NIM_MODIFY, &nid);
 
     usage.clear();
 }
 
-// Start ETW
+// ===== Start ETW =====
 void StartETW()
 {
     ULONG size = sizeof(EVENT_TRACE_PROPERTIES) + 1024;
@@ -112,15 +110,15 @@ void StartETW()
     props->Wnode.ClientContext = 1;
     props->LogFileMode = EVENT_TRACE_REAL_TIME_MODE;
 
-    // Unicode chuẩn
-    StartTraceW(&sessionHandle, L"MyNetSession", props);
+    if (StartTraceW(&sessionHandle, L"MyNetSession", props) != ERROR_SUCCESS)
+        return;
 
     EnableTraceEx2(
         sessionHandle,
         &SystemTraceControlGuid,
         EVENT_CONTROL_CODE_ENABLE_PROVIDER,
         TRACE_LEVEL_INFORMATION,
-        0x10, // Network
+        0x10,
         0,
         0,
         NULL
@@ -139,13 +137,32 @@ void StartETW()
     }, NULL, 0, NULL);
 }
 
-// Window proc
+// ===== Window Proc =====
 LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 {
     switch (msg)
     {
     case WM_TIMER:
         UpdateTray();
+        break;
+
+    case WM_TRAYICON:
+        if (lParam == WM_RBUTTONUP)
+        {
+            POINT pt;
+            GetCursorPos(&pt);
+
+            HMENU menu = CreatePopupMenu();
+            AppendMenu(menu, MF_STRING, 1, L"Thoát");
+
+            SetForegroundWindow(hwnd);
+            int cmd = TrackPopupMenu(menu, TPM_RETURNCMD, pt.x, pt.y, 0, hwnd, NULL);
+
+            if (cmd == 1)
+                DestroyWindow(hwnd);
+
+            DestroyMenu(menu);
+        }
         break;
 
     case WM_DESTROY:
@@ -156,7 +173,7 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
     return DefWindowProc(hwnd, msg, wParam, lParam);
 }
 
-// Main
+// ===== MAIN =====
 int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR, int)
 {
     WNDCLASS wc = {};
@@ -169,9 +186,11 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR, int)
     nid.cbSize = sizeof(nid);
     nid.hWnd = hwnd;
     nid.uID = 1;
-    nid.uFlags = NIF_ICON | NIF_TIP;
+    nid.uFlags = NIF_ICON | NIF_TIP | NIF_MESSAGE;
+    nid.uCallbackMessage = WM_TRAYICON;
     nid.hIcon = LoadIcon(NULL, IDI_APPLICATION);
 
+    wcscpy_s(nid.szTip, L"Net Monitor Starting...");
     Shell_NotifyIcon(NIM_ADD, &nid);
 
     SetTimer(hwnd, 1, 2000, NULL);
