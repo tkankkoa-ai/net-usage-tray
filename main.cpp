@@ -96,7 +96,7 @@ void StartETW()
     props->Wnode.ClientContext = 1;
     props->LogFileMode = EVENT_TRACE_REAL_TIME_MODE;
 
-    StartTrace(&sessionHandle, L"MyNetSession", props);
+    StartTrace(&sessionHandle, "MyNetSession", props);
 
     EnableTraceEx2(
         sessionHandle,
@@ -110,7 +110,7 @@ void StartETW()
     );
 
     EVENT_TRACE_LOGFILE trace = {};
-    trace.LoggerName = (LPWSTR)L"MyNetSession";
+    trace.LoggerName = (LPWSTR)"MyNetSession";
     trace.ProcessTraceMode = PROCESS_TRACE_MODE_REAL_TIME | PROCESS_TRACE_MODE_EVENT_RECORD;
     trace.EventRecordCallback = (PEVENT_RECORD_CALLBACK)(EventCallback);
 
