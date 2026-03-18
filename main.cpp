@@ -1,8 +1,9 @@
 #define UNICODE
 #define _UNICODE
+#define INITGUID
 
 #include <windows.h>
-#include <shellapi.h>
+#include <evntcons.h>
 #include <evntrace.h>
 #include <tdh.h>
 #include <map>
