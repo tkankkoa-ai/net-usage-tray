@@ -1,13 +1,16 @@
+#define UNICODE
+#define _UNICODE
+
 #include <windows.h>
 #include <shellapi.h>
 #include <evntrace.h>
 #include <tdh.h>
-#include <iostream>
 #include <map>
 #include <vector>
 #include <algorithm>
 #include <tlhelp32.h>
 #include <string>
+
 #pragma comment(lib, "tdh.lib")
 #pragma comment(lib, "advapi32.lib")
 
@@ -48,7 +51,6 @@ VOID WINAPI EventCallback(PEVENT_RECORD record)
 
     ULONG size = 0;
 
-    // offset size (network packet)
     if (record->UserDataLength >= 4)
     {
         size = *(ULONG*)(record->UserData);
@@ -73,10 +75,19 @@ void UpdateTray()
         if (count++ >= 5) break;
 
         std::string name = GetProcessName(item.first);
-        text += name + ": " + std::to_string(item.second / 1024) + " KB\n";
+
+        char buffer[64];
+        sprintf_s(buffer, "%llu", item.second / 1024);
+
+        text += name + ": " + buffer + " KB\n";
     }
 
-    strncpy_s(nid.szTip, text.c_str(), sizeof(nid.szTip));
+    // Convert sang wchar để gán vào tray
+    wchar_t wtext[128];
+    MultiByteToWideChar(CP_UTF8, 0, text.c_str(), -1, wtext, 128);
+
+    wcsncpy_s(nid.szTip, wtext, _TRUNCATE);
+
     Shell_NotifyIcon(NIM_MODIFY, &nid);
 
     usage.clear();
@@ -85,10 +96,9 @@ void UpdateTray()
 // Start ETW
 void StartETW()
 {
-    EVENT_TRACE_PROPERTIES* props;
     ULONG size = sizeof(EVENT_TRACE_PROPERTIES) + 1024;
 
-    props = (EVENT_TRACE_PROPERTIES*)malloc(size);
+    EVENT_TRACE_PROPERTIES* props = (EVENT_TRACE_PROPERTIES*)malloc(size);
     ZeroMemory(props, size);
 
     props->Wnode.BufferSize = size;
@@ -96,7 +106,8 @@ void StartETW()
     props->Wnode.ClientContext = 1;
     props->LogFileMode = EVENT_TRACE_REAL_TIME_MODE;
 
-    StartTrace(&sessionHandle, "MyNetSession", props);
+    // Unicode chuẩn
+    StartTraceW(&sessionHandle, L"MyNetSession", props);
 
     EnableTraceEx2(
         sessionHandle,
@@ -109,12 +120,12 @@ void StartETW()
         NULL
     );
 
-    EVENT_TRACE_LOGFILE trace = {};
-    trace.LoggerName = (LPWSTR)"MyNetSession";
+    EVENT_TRACE_LOGFILEW trace = {};
+    trace.LoggerName = (LPWSTR)L"MyNetSession";
     trace.ProcessTraceMode = PROCESS_TRACE_MODE_REAL_TIME | PROCESS_TRACE_MODE_EVENT_RECORD;
-    trace.EventRecordCallback = (PEVENT_RECORD_CALLBACK)(EventCallback);
+    trace.EventRecordCallback = EventCallback;
 
-    traceHandle = OpenTrace(&trace);
+    traceHandle = OpenTraceW(&trace);
 
     CreateThread(NULL, 0, [](LPVOID)->DWORD {
         ProcessTrace(&traceHandle, 1, NULL, NULL);
@@ -144,10 +155,10 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR, int)
 {
     WNDCLASS wc = {};
     wc.lpfnWndProc = WndProc;
-    wc.lpszClassName = "NetTray";
+    wc.lpszClassName = L"NetTray";
     RegisterClass(&wc);
 
-    HWND hwnd = CreateWindow("NetTray", "", 0, 0, 0, 0, 0, 0, 0, hInstance, 0);
+    HWND hwnd = CreateWindow(L"NetTray", L"", 0, 0, 0, 0, 0, 0, 0, hInstance, 0);
 
     nid.cbSize = sizeof(nid);
     nid.hWnd = hwnd;
